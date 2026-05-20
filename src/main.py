@@ -1,5 +1,8 @@
-from textnode import TextNode, TextType
+from copy_static import empty_public, copy_static
 
-dummy = TextNode("This is some anchor text", TextType.LINK, "https://www.boot.dev")
+def main():
+    empty_public()
+    copy_static("static", "public")
 
-print(repr(dummy))
+if __name__ == "__main__":
+    main()
