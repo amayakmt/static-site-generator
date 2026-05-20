@@ -1,11 +1,11 @@
 import os
 import shutil
 
-def empty_public():
-    if os.path.exists("public"):
-        shutil.rmtree("public")
+def empty_web_content(path):
+    if os.path.exists(path):
+        shutil.rmtree(path)
 
-    os.makedirs("public", exist_ok=True)
+    os.makedirs(path, exist_ok=True)
 
 def copy_static(path_from, path_to):
     for item in os.listdir(path_from):
