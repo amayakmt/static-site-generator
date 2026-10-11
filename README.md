@@ -1,102 +1,121 @@
 # Static Site Generator
 
-A small static site generator written in pure Python — no external dependencies. Reads a tree of Markdown files, applies an HTML template, and produces a deployable static site.
-
-**Live demo:** https://amayakmt.github.io/static-site-generator
-
-## Features
-
-- Markdown → HTML conversion supporting:
-  - Headings (`#` through `######`)
-  - Paragraphs
-  - Fenced code blocks (`` ``` ``)
-  - Block quotes (`>`)
-  - Unordered (`-`) and ordered (`1.`) lists
-  - Inline formatting: `**bold**`, `_italic_`, `` `code` ``, `[links](url)`, `![images](url)`
-- Recursive directory traversal — mirrors your `content/` tree into the output
-- Configurable base path (so the same code works on `localhost` and on a GitHub Pages subpath)
-- Static asset copy (CSS, images) from `static/` into the output
-- Unit-tested
-
-## Project layout
-
-```
-.
-├── content/          Markdown source files (mirrored into output)
-├── static/           Static assets (CSS, images) copied as-is
-├── template.html     HTML wrapper with {{ Title }} and {{ Content }} placeholders
-├── src/              Python source
-│   ├── main.py
-│   ├── copy_static.py
-│   ├── generate_page.py
-│   ├── md_to_html.py
-│   ├── split_blocks.py
-│   ├── convert_raw.py
-│   ├── textnode.py
-│   ├── htmlnode.py
-│   ├── extract_md_objects.py
-│   └── test_*.py
-├── docs/             Build output (served by GitHub Pages)
-├── build.sh          Production build
-├── main.sh           Local dev build + server
-└── test.sh           Run all unit tests
-```
-
-## Quick start
-
-Requires Python 3.10+ (uses `match`/`case`).
-
-### Local development
-
+**A static site generator in pure Python: it turns a folder of Markdown files into a folder of HTML pages, with no dependencies and no Markdown library.**
+ 
+![Markdown source of the home page next to the HTML page the generator produced from it](assets/demo.png)
+ 
+*Left: `content/index.md`. Right: the page built from it. The live result is at [amayakmt.github.io/static-site-generator](https://amayakmt.github.io/static-site-generator/).*
+ 
+## Motivation
+ 
+Static site generators look like magic until you write one. This one is the whole pipeline in under 400 lines: split Markdown into blocks, classify them, parse inline syntax into nodes, render the nodes as HTML, and wrap the result in a template. The parser is hand-written, and 96 unit tests cover it.
+ 
+The demo site is a Tolkien fan page. The generator is the project.
+ 
+## Quick Start
+ 
+Requires **Python 3.10+** (the code uses `match`). Nothing to install.
+ 
 ```bash
-./main.sh
+git clone https://github.com/amayakmt/static-site-generator.git
+cd static-site-generator
+python3 src/main.py
+cd docs && python3 -m http.server 8888
 ```
-
-This builds the site with base path `/` and serves it on `http://localhost:8888/`.
-
-### Production build
-
+ 
+Open `http://localhost:8888`. The generator wipes `docs/`, copies `static/` into it, and renders every `.md` file under `content/` through `template.html`.
+ 
+## Usage
+ 
+### Add a page
+ 
+Every page needs an H1 on its own line. It becomes the `<title>`.
+ 
+```text
+content/
+  index.md              ->  docs/index.html
+  contact/index.md      ->  docs/contact/index.html
+  blog/tom/index.md     ->  docs/blog/tom/index.html
+```
+ 
+Files in `static/` (CSS, images) are copied to `docs/` unchanged. Edit `template.html` to change the layout: `{{ Title }}` and `{{ Content }}` are replaced per page.
+ 
+### Supported Markdown
+ 
+| Block | Syntax |
+| --- | --- |
+| Headings | `#` to `######` followed by a space |
+| Paragraphs | Text separated by blank lines |
+| Code blocks | A fence on its own line (no language tag), closed by a fence |
+| Quotes | Lines starting with `>` |
+| Unordered lists | Lines starting with `- ` |
+| Ordered lists | `1. `, `2. `, in sequence |
+ 
+| Inline | Syntax |
+| --- | --- |
+| Bold | `**text**` |
+| Italic | `_text_` |
+| Code | `` `text` `` |
+| Links | `[text](url)` |
+| Images | `![alt](url)` |
+ 
+Not supported: nested lists, nested inline formatting, HTML escaping, tables, and `*italic*`.
+ 
+### Deploy to GitHub Pages
+ 
+Pages serves from a subpath, so root-relative links need a prefix. Pass the base path as the only argument:
+ 
 ```bash
-./build.sh
+python3 src/main.py "/static-site-generator/"
 ```
-
-Builds with the GitHub Pages base path (`/static-site-generator/`). Output goes to `docs/`, which is the directory GitHub Pages serves from on the `main` branch.
-
-### Tests
-
+ 
+That rewrites every `href="/` and `src="/` in the output. `build.sh` runs exactly this. Commit `docs/` and set Pages to serve from `main` / `docs`.
+ 
+### Limits to know before you write content
+ 
+These are real behaviors, checked against the code:
+ 
+- **Underscores are always italics.** `my_file_name.py` renders as `my<i>file</i>name.py`, and underscores inside URLs break the link.
+- **A blank line inside a code block splits it**, and the generator fails with an unbalanced-delimiter error.
+- **Text is not escaped.** `<` and `&` pass through as written, which also lets you embed raw HTML.
+- **Pages without an H1 raise `ValueError: title not found`.**
+## Contributing
+ 
+### Clone the repo
+ 
+```bash
+git clone https://github.com/amayakmt/static-site-generator.git
+cd static-site-generator
+```
+ 
+### Run the tests
+ 
 ```bash
 ./test.sh
 ```
-
-Runs all `test_*.py` modules via `unittest`.
-
-## How it works
-
-The pipeline is a chain of small, testable transformations:
-
-1. **`markdown_to_blocks`** — splits the document on blank lines into independent blocks.
-2. **`block_to_block_type`** — classifies each block (paragraph, heading, list, etc.).
-3. **`text_to_textnodes`** — parses inline markdown within a block into a flat list of `TextNode`s (one per delimited run).
-4. **`text_node_to_html_node`** — converts each `TextNode` into a `LeafNode` with the appropriate HTML tag.
-5. **`markdown_to_html_node`** — assembles block-level `ParentNode`s containing the inline children, wraps the lot in a single `<div>`, and returns the root.
-6. **`generate_page`** — renders that root via `to_html()`, splices it into the template, rewrites root-relative URLs to honor the base path, and writes the resulting HTML to disk.
-7. **`generate_pages_recursive`** — walks `content/`, calling `generate_page` for every `.md` file and recreating the directory structure in `docs/`.
-
-The HTML node model is two classes: `LeafNode` (terminal, has a value) and `ParentNode` (has a list of children), both descended from `HTMLNode`. Rendering is a simple recursive concatenation.
-
-## Deployment
-
-The `docs/` directory is committed and served directly by GitHub Pages from the `main` branch. To deploy:
-
-```bash
-./build.sh
-git add docs
-git commit -m "rebuild site"
-git push
+ 
+This runs `python3 -m unittest discover -s src`.
+ 
+### How the pipeline fits together
+ 
+```text
+src/
+  main.py               # Entry point: clean docs/, copy static/, render content/
+  generate_page.py      # Title extraction, template fill, recursive page build
+  split_blocks.py       # Markdown -> blocks, block type detection
+  md_to_html.py         # Blocks -> HTML node tree
+  convert_raw.py        # Inline text -> TextNodes (bold, italic, code, links, images)
+  extract_md_objects.py # Regex extraction for links and images
+  textnode.py           # TextNode and its HTML conversion
+  htmlnode.py           # HTMLNode, LeafNode, ParentNode
+  copy_static.py        # Recursive copy of static/
+  test_*.py             # Unit tests, one file per module
 ```
-
-GitHub Pages picks up the change automatically.
-
+ 
+### Submit a pull request
+ 
+Fork the repository and open a pull request to `main` with a focused change and a test for it.
+ 
 ## License
-
-MIT
+ 
+[MIT](LICENSE)
